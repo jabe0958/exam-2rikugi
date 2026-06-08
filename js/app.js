@@ -1,20 +1,21 @@
 'use strict';
 
 const STORAGE_KEY = 'rikugi2_state';
-const CATEGORIES = ['すべて', '法規', '無線工学の基礎', '無線工学A', '無線工学B'];
+const HISTORY_KEY  = 'rikugi2_history';
+const CATEGORIES   = ['すべて', '法規', '無線工学の基礎', '無線工学A', '無線工学B'];
 
 let allQuestions = [];
 let state = {
   category: 'すべて',
   mode: '4択',        // '2択' | '4択'
   questions: [],      // filtered & shuffled ids
-  current: 0,         // index in questions array
+  current: 0,
   answers: {},        // { questionId: { selected, correct } }
   shownOptions: {},   // { questionId: number[] } — 2択時に表示する元のoption index
-  screen: 'start',    // 'start' | 'quiz' | 'result'
+  screen: 'start',    // 'start' | 'quiz' | 'result' | 'stats'
 };
 
-// ── Persistence ──────────────────────────────────────────
+// ── Session state persistence ─────────────────────────────
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -29,6 +30,24 @@ function loadState() {
 
 function clearState() {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+// ── Question history persistence ──────────────────────────
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function recordHistory(questionId, correct) {
+  const history = loadHistory();
+  const h = history[questionId] || [];
+  h.push(correct);
+  if (h.length > 10) h.splice(0, h.length - 10);
+  history[questionId] = h;
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -59,12 +78,23 @@ function correctCount() {
   return Object.values(state.answers).filter(a => a.correct).length;
 }
 
+function questionHistoryHTML(qid) {
+  const history = loadHistory();
+  const h = history[qid] || [];
+  if (h.length === 0) return '';
+  const icons = h.map(c =>
+    `<span class="hist-icon ${c ? 'ok' : 'ng'}">${c ? '○' : '×'}</span>`
+  ).join('');
+  return `<div class="question-history"><span class="hist-label">履歴</span>${icons}</div>`;
+}
+
 // ── Render ───────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app');
-  if (state.screen === 'start') renderStart(app);
-  else if (state.screen === 'quiz') renderQuiz(app);
+  if      (state.screen === 'start')  renderStart(app);
+  else if (state.screen === 'quiz')   renderQuiz(app);
   else if (state.screen === 'result') renderResult(app);
+  else if (state.screen === 'stats')  renderStats(app);
 }
 
 function renderStart(app) {
@@ -74,6 +104,7 @@ function renderStart(app) {
   app.innerHTML = `
     <div class="header">
       <h1>二陸技 一問一答</h1>
+      <button class="btn btn-secondary" id="btn-stats-top" style="width:auto;padding:6px 14px;font-size:13px">学習状況</button>
     </div>
     <div class="card start-screen">
       <h2>二陸技 練習問題</h2>
@@ -100,7 +131,11 @@ function renderStart(app) {
     </div>
   `;
 
-  // mode buttons
+  document.getElementById('btn-stats-top').addEventListener('click', () => {
+    state.screen = 'stats';
+    render();
+  });
+
   const modeWrap = document.getElementById('start-modes');
   ['2択', '4択'].forEach(m => {
     const btn = document.createElement('button');
@@ -114,7 +149,6 @@ function renderStart(app) {
     modeWrap.appendChild(btn);
   });
 
-  // category buttons
   const filterWrap = document.getElementById('start-filters');
   CATEGORIES.forEach(cat => {
     const btn = document.createElement('button');
@@ -143,11 +177,11 @@ function renderStart(app) {
 }
 
 function startNew() {
-  state.questions = getFilteredIds(state.category);
-  state.current = 0;
-  state.answers = {};
+  state.questions   = getFilteredIds(state.category);
+  state.current     = 0;
+  state.answers     = {};
   state.shownOptions = {};
-  state.screen = 'quiz';
+  state.screen      = 'quiz';
   saveState();
   render();
 }
@@ -155,7 +189,6 @@ function startNew() {
 function getShownOptions(q) {
   if (state.mode === '4択') return [0, 1, 2, 3];
   if (state.shownOptions[q.id]) return state.shownOptions[q.id];
-  // 2択: 正解 + ランダムな不正解1つ をシャッフル
   const wrongs = q.options.map((_, i) => i).filter(i => i !== q.answer);
   const wrong = wrongs[Math.floor(Math.random() * wrongs.length)];
   const indices = shuffle([q.answer, wrong]);
@@ -169,12 +202,12 @@ function renderQuiz(app) {
   if (!q) { renderResult(app); return; }
 
   const answered = state.answers[q.id];
-  const total = state.questions.length;
-  const pct = Math.round((state.current / total) * 100);
+  const total    = state.questions.length;
+  const pct      = Math.round((state.current / total) * 100);
 
-  const optLabels = ['A', 'B', 'C', 'D'];
+  const optLabels    = ['A', 'B', 'C', 'D'];
   const displayIndices = getShownOptions(q);
-  const correctLabel = optLabels[displayIndices.indexOf(q.answer)];
+  const correctLabel   = optLabels[displayIndices.indexOf(q.answer)];
 
   app.innerHTML = `
     <div class="header">
@@ -197,7 +230,10 @@ function renderQuiz(app) {
     <div class="nav-dots" id="nav-dots"></div>
 
     <div class="card" id="question-card">
-      <span class="badge ${q.category}">${q.category}</span>
+      <div class="badge-history-row">
+        <span class="badge ${q.category}">${q.category}</span>
+        ${questionHistoryHTML(q.id)}
+      </div>
       <p class="question-text">${q.question}</p>
       <div class="options" id="options"></div>
       ${answered ? `
@@ -215,31 +251,24 @@ function renderQuiz(app) {
     ` : ''}
   `;
 
-  // nav dots (show up to 30)
   const dots = document.getElementById('nav-dots');
-  const showDots = state.questions.slice(0, Math.min(total, 30));
-  showDots.forEach((qid, idx) => {
+  state.questions.slice(0, Math.min(total, 30)).forEach((qid, idx) => {
     const ans = state.answers[qid];
     const dot = document.createElement('button');
     dot.className = 'dot' +
       (ans ? (ans.correct ? ' answered-correct' : ' answered-wrong') : '') +
       (idx === state.current ? ' current' : '');
     dot.textContent = idx + 1;
-    dot.addEventListener('click', () => {
-      state.current = idx;
-      saveState();
-      render();
-    });
+    dot.addEventListener('click', () => { state.current = idx; saveState(); render(); });
     dots.appendChild(dot);
   });
 
-  // options
   const optWrap = document.getElementById('options');
   displayIndices.forEach((origIdx, pos) => {
     const btn = document.createElement('button');
     btn.className = 'option-btn';
     if (answered) {
-      if (origIdx === q.answer) btn.classList.add('correct');
+      if (origIdx === q.answer)          btn.classList.add('correct');
       else if (origIdx === answered.selected) btn.classList.add('wrong');
       btn.disabled = true;
     }
@@ -249,9 +278,7 @@ function renderQuiz(app) {
   });
 
   document.getElementById('btn-finish').addEventListener('click', () => {
-    state.screen = 'result';
-    saveState();
-    render();
+    state.screen = 'result'; saveState(); render();
   });
 
   const btnNext = document.getElementById('btn-next');
@@ -259,13 +286,11 @@ function renderQuiz(app) {
     btnNext.addEventListener('click', () => {
       if (state.current + 1 < state.questions.length) {
         state.current++;
-        saveState();
-        render();
       } else {
         state.screen = 'result';
-        saveState();
-        render();
       }
+      saveState();
+      render();
     });
   }
 }
@@ -274,15 +299,16 @@ function answerQuestion(q, selected) {
   if (state.answers[q.id]) return;
   const correct = selected === q.answer;
   state.answers[q.id] = { selected, correct };
+  recordHistory(q.id, correct);
   saveState();
   render();
 }
 
 function renderResult(app) {
-  const total = state.questions.length;
+  const total    = state.questions.length;
   const answered = answeredCount();
-  const correct = correctCount();
-  const pct = answered > 0 ? Math.round((correct / answered) * 100) : 0;
+  const correct  = correctCount();
+  const pct      = answered > 0 ? Math.round((correct / answered) * 100) : 0;
 
   const mistakes = state.questions
     .map(id => allQuestions.find(q => q.id === id))
@@ -326,13 +352,101 @@ function renderResult(app) {
 
   document.getElementById('btn-retry-wrong').addEventListener('click', () => {
     if (mistakes.length === 0) return;
-    state.questions = shuffle(mistakes.map(q => q.id));
-    state.current = 0;
-    state.answers = {};
+    state.questions    = shuffle(mistakes.map(q => q.id));
+    state.current      = 0;
+    state.answers      = {};
     state.shownOptions = {};
-    state.screen = 'quiz';
+    state.screen       = 'quiz';
     saveState();
     render();
+  });
+}
+
+// ── Stats screen ──────────────────────────────────────────
+function renderStats(app) {
+  const history = loadHistory();
+
+  function categoryStats(cat) {
+    const qs = cat === 'すべて' ? allQuestions : allQuestions.filter(q => q.category === cat);
+    let attempted = 0, totalTries = 0, totalCorrect = 0;
+    qs.forEach(q => {
+      const h = history[q.id] || [];
+      if (h.length > 0) {
+        attempted++;
+        totalTries   += h.length;
+        totalCorrect += h.filter(Boolean).length;
+      }
+    });
+    const rate = totalTries > 0 ? Math.round(totalCorrect / totalTries * 100) : null;
+    return { qs, attempted, totalTries, totalCorrect, rate };
+  }
+
+  function rateClass(rate) {
+    if (rate === null) return 'none';
+    if (rate >= 70) return 'high';
+    if (rate >= 40) return 'mid';
+    return 'low';
+  }
+
+  app.innerHTML = `
+    <div class="header">
+      <h1>学習状況</h1>
+      <button class="btn btn-secondary" id="btn-stats-back" style="width:auto;padding:6px 14px;font-size:13px">← 戻る</button>
+    </div>
+    <div id="stats-body"></div>
+  `;
+
+  document.getElementById('btn-stats-back').addEventListener('click', () => {
+    state.screen = 'start';
+    render();
+  });
+
+  const body = document.getElementById('stats-body');
+
+  CATEGORIES.forEach(cat => {
+    const { qs, attempted, totalTries, rate } = categoryStats(cat);
+    const rc = rateClass(rate);
+    const rateLabel = rate !== null ? `${rate}%` : '--';
+
+    const card = document.createElement('div');
+    card.className = 'stats-card';
+
+    // dot grid for individual categories
+    let dotGrid = '';
+    if (cat !== 'すべて') {
+      const dotItems = qs.map(q => {
+        const h = history[q.id] || [];
+        if (h.length === 0) return `<div class="sq-dot unattempted" title="${q.question.slice(0,20)}…"></div>`;
+        const r = h.filter(Boolean).length / h.length;
+        const cls = r >= 0.7 ? 'good' : r >= 0.4 ? 'mid' : 'bad';
+        return `<div class="sq-dot ${cls}" title="${q.question.slice(0,20)}…"></div>`;
+      }).join('');
+      dotGrid = `
+        <div class="sq-grid">${dotItems}</div>
+        <div class="sq-legend">
+          <span class="sq-dot good sm"></span>正解率70%以上
+          <span class="sq-dot mid sm"></span>40〜69%
+          <span class="sq-dot bad sm"></span>40%未満
+          <span class="sq-dot unattempted sm"></span>未挑戦
+        </div>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="stats-card-top">
+        <span class="badge ${cat === 'すべて' ? 'all' : cat}">${cat}</span>
+        <span class="stats-pct ${rc}">${rateLabel}</span>
+      </div>
+      <div class="stats-bar-wrap">
+        <div class="stats-bar-fill ${rc}" style="width:${rate ?? 0}%"></div>
+      </div>
+      <div class="stats-detail">
+        ${attempted}問 / ${qs.length}問 解答済み
+        ${totalTries > 0 ? `・計${totalTries}回回答` : ''}
+      </div>
+      ${dotGrid}
+    `;
+    body.appendChild(card);
   });
 }
 
@@ -349,7 +463,7 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2000);
 }
 
-// ── Auto-save notification on visibility change ──────────
+// ── Auto-save on tab hide ─────────────────────────────────
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && state.screen === 'quiz') {
     saveState();
@@ -365,7 +479,6 @@ async function init() {
   const saved = loadState();
   if (saved) {
     Object.assign(state, saved);
-    // if was mid-quiz, resume seamlessly
     if (state.screen === 'start') state.screen = 'start';
   }
 
