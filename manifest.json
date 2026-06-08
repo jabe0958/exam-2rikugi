@@ -1,0 +1,17 @@
+{
+  "name": "二陸技 一問一答",
+  "short_name": "二陸技",
+  "description": "第二級陸上無線技術士 試験対策アプリ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
