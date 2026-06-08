@@ -88,6 +88,19 @@ function questionHistoryHTML(qid) {
   return `<div class="question-history"><span class="hist-label">履歴</span>${icons}</div>`;
 }
 
+// ── Math rendering (KaTeX) ───────────────────────────────
+function renderMath(el) {
+  if (typeof renderMathInElement === 'function') {
+    renderMathInElement(el, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true  },
+        { left: '$',  right: '$',  display: false },
+      ],
+      throwOnError: false,
+    });
+  }
+}
+
 // ── Render ───────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app');
@@ -174,6 +187,8 @@ function renderStart(app) {
       startNew();
     });
   }
+
+  renderMath(app);
 }
 
 function startNew() {
@@ -293,6 +308,8 @@ function renderQuiz(app) {
       render();
     });
   }
+
+  renderMath(app);
 }
 
 function answerQuestion(q, selected) {
@@ -360,6 +377,8 @@ function renderResult(app) {
     saveState();
     render();
   });
+
+  renderMath(app);
 }
 
 // ── Stats screen ──────────────────────────────────────────
@@ -448,6 +467,8 @@ function renderStats(app) {
     `;
     body.appendChild(card);
   });
+
+  renderMath(app);
 }
 
 // ── Toast ─────────────────────────────────────────────────

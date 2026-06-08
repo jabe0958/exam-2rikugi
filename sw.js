@@ -1,4 +1,4 @@
-const CACHE = 'rikugi2-v4';
+const CACHE = 'rikugi2-v5';
 const ASSETS = [
   '/',
   '/index.html',
@@ -24,6 +24,21 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  // KaTeX CDN: ネットワーク優先、失敗時はキャッシュから返す
+  if (e.request.url.includes('cdn.jsdelivr.net')) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res.ok) {
+            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          }
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+  // ローカルアセット: キャッシュ優先
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
