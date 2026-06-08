@@ -6,10 +6,12 @@ const CATEGORIES = ['すべて', '法規', '無線工学の基礎', '無線工�
 let allQuestions = [];
 let state = {
   category: 'すべて',
-  questions: [],   // filtered & shuffled ids
-  current: 0,      // index in questions array
-  answers: {},     // { questionId: { selected, correct } }
-  screen: 'start', // 'start' | 'quiz' | 'result'
+  mode: '4択',        // '2択' | '4択'
+  questions: [],      // filtered & shuffled ids
+  current: 0,         // index in questions array
+  answers: {},        // { questionId: { selected, correct } }
+  shownOptions: {},   // { questionId: number[] } — 2択時に表示する元のoption index
+  screen: 'start',    // 'start' | 'quiz' | 'result'
 };
 
 // ── Persistence ──────────────────────────────────────────
@@ -79,7 +81,7 @@ function renderStart(app) {
       ${hasSaved ? `
         <div class="resume-card">
           <h3>前回の続きから再開できます</h3>
-          <p>${saved.category} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
+          <p>${saved.mode || '4択'} ・ ${saved.category} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
           <div class="btn-row">
             <button class="btn btn-primary" id="btn-resume">続きから</button>
             <button class="btn btn-secondary" id="btn-new">最初から</button>
@@ -87,12 +89,30 @@ function renderStart(app) {
         </div>
       ` : ''}
       <div>
+        <p style="margin-bottom:10px;font-weight:600;font-size:14px;">モードを選ぶ</p>
+        <div class="filter-wrap" id="start-modes"></div>
+      </div>
+      <div>
         <p style="margin-bottom:10px;font-weight:600;font-size:14px;">カテゴリを選んでスタート</p>
         <div class="filter-wrap" id="start-filters"></div>
       </div>
       <button class="btn btn-primary" id="btn-start">スタート</button>
     </div>
   `;
+
+  // mode buttons
+  const modeWrap = document.getElementById('start-modes');
+  ['2択', '4択'].forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (state.mode === m ? ' active' : '');
+    btn.textContent = m;
+    btn.addEventListener('click', () => {
+      state.mode = m;
+      modeWrap.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    modeWrap.appendChild(btn);
+  });
 
   // category buttons
   const filterWrap = document.getElementById('start-filters');
@@ -126,9 +146,22 @@ function startNew() {
   state.questions = getFilteredIds(state.category);
   state.current = 0;
   state.answers = {};
+  state.shownOptions = {};
   state.screen = 'quiz';
   saveState();
   render();
+}
+
+function getShownOptions(q) {
+  if (state.mode === '4択') return [0, 1, 2, 3];
+  if (state.shownOptions[q.id]) return state.shownOptions[q.id];
+  // 2択: 正解 + ランダムな不正解1つ をシャッフル
+  const wrongs = q.options.map((_, i) => i).filter(i => i !== q.answer);
+  const wrong = wrongs[Math.floor(Math.random() * wrongs.length)];
+  const indices = shuffle([q.answer, wrong]);
+  state.shownOptions[q.id] = indices;
+  saveState();
+  return indices;
 }
 
 function renderQuiz(app) {
@@ -140,11 +173,14 @@ function renderQuiz(app) {
   const pct = Math.round((state.current / total) * 100);
 
   const optLabels = ['A', 'B', 'C', 'D'];
+  const displayIndices = getShownOptions(q);
+  const correctLabel = optLabels[displayIndices.indexOf(q.answer)];
 
   app.innerHTML = `
     <div class="header">
       <h1>二陸技 一問一答</h1>
       <div class="header-right">
+        <span style="font-size:12px;font-weight:700;color:var(--primary);background:#eff6ff;padding:3px 8px;border-radius:999px">${state.mode}</span>
         <span style="font-size:13px;color:var(--text-muted)">${answeredCount()}/${total}</span>
         <button class="btn btn-secondary" id="btn-finish" style="width:auto;padding:6px 14px;font-size:13px">終了</button>
       </div>
@@ -166,7 +202,7 @@ function renderQuiz(app) {
       <div class="options" id="options"></div>
       ${answered ? `
         <div class="result-badge ${answered.correct ? 'ok' : 'ng'}">
-          ${answered.correct ? '✓ 正解！' : `✗ 不正解（正解：${optLabels[q.answer]}）`}
+          ${answered.correct ? '✓ 正解！' : `✗ 不正解（正解：${correctLabel}）`}
         </div>
         <div class="explanation show"><strong>解説</strong>${q.explanation}</div>
       ` : ''}
@@ -179,7 +215,7 @@ function renderQuiz(app) {
     ` : ''}
   `;
 
-  // nav dots (show up to 20)
+  // nav dots (show up to 30)
   const dots = document.getElementById('nav-dots');
   const showDots = state.questions.slice(0, Math.min(total, 30));
   showDots.forEach((qid, idx) => {
@@ -199,16 +235,16 @@ function renderQuiz(app) {
 
   // options
   const optWrap = document.getElementById('options');
-  q.options.forEach((opt, idx) => {
+  displayIndices.forEach((origIdx, pos) => {
     const btn = document.createElement('button');
     btn.className = 'option-btn';
     if (answered) {
-      if (idx === q.answer) btn.classList.add('correct');
-      else if (idx === answered.selected) btn.classList.add('wrong');
+      if (origIdx === q.answer) btn.classList.add('correct');
+      else if (origIdx === answered.selected) btn.classList.add('wrong');
       btn.disabled = true;
     }
-    btn.innerHTML = `<span class="opt-label">${optLabels[idx]}</span><span>${opt}</span>`;
-    btn.addEventListener('click', () => answerQuestion(q, idx));
+    btn.innerHTML = `<span class="opt-label">${optLabels[pos]}</span><span>${q.options[origIdx]}</span>`;
+    btn.addEventListener('click', () => answerQuestion(q, origIdx));
     optWrap.appendChild(btn);
   });
 
@@ -284,7 +320,7 @@ function renderResult(app) {
 
   document.getElementById('btn-back-start').addEventListener('click', () => {
     clearState();
-    state = { category: 'すべて', questions: [], current: 0, answers: {}, screen: 'start' };
+    state = { category: 'すべて', mode: state.mode, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start' };
     render();
   });
 
@@ -293,6 +329,7 @@ function renderResult(app) {
     state.questions = shuffle(mistakes.map(q => q.id));
     state.current = 0;
     state.answers = {};
+    state.shownOptions = {};
     state.screen = 'quiz';
     saveState();
     render();
