@@ -168,6 +168,13 @@ function renderStart(app) {
   });
 
   const countWrap = document.getElementById('start-counts');
+  const btnStart  = document.getElementById('btn-start');
+
+  function syncStartBtn() {
+    btnStart.textContent = `スタート（${state.count}問）`;
+  }
+  syncStartBtn();
+
   [10, 20].forEach(n => {
     const btn = document.createElement('button');
     btn.className = 'filter-btn' + (state.count === n ? ' active' : '');
@@ -176,6 +183,7 @@ function renderStart(app) {
       state.count = n;
       countWrap.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      syncStartBtn();
     });
     countWrap.appendChild(btn);
   });
