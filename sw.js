@@ -1,4 +1,4 @@
-const CACHE = 'rikugi2-v7';
+const CACHE = 'rikugi2-v8';
 const ASSETS = [
   '/',
   '/index.html',
