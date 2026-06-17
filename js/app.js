@@ -8,6 +8,7 @@ let allQuestions = [];
 let state = {
   category: 'すべて',
   mode: '4択',        // '2択' | '4択'
+  count: 10,          // 10 | 20
   questions: [],      // filtered & shuffled ids
   current: 0,
   answers: {},        // { questionId: { selected, correct } }
@@ -125,7 +126,7 @@ function renderStart(app) {
       ${hasSaved ? `
         <div class="resume-card">
           <h3>前回の続きから再開できます</h3>
-          <p>${saved.mode || '4択'} ・ ${saved.category} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
+          <p>${saved.mode || '4択'} ・ ${saved.count || 10}問 ・ ${saved.category} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
           <div class="btn-row">
             <button class="btn btn-primary" id="btn-resume">続きから</button>
             <button class="btn btn-secondary" id="btn-new">最初から</button>
@@ -135,6 +136,10 @@ function renderStart(app) {
       <div>
         <p style="margin-bottom:10px;font-weight:600;font-size:14px;">モードを選ぶ</p>
         <div class="filter-wrap" id="start-modes"></div>
+      </div>
+      <div>
+        <p style="margin-bottom:10px;font-weight:600;font-size:14px;">問題数を選ぶ</p>
+        <div class="filter-wrap" id="start-counts"></div>
       </div>
       <div>
         <p style="margin-bottom:10px;font-weight:600;font-size:14px;">カテゴリを選んでスタート</p>
@@ -160,6 +165,19 @@ function renderStart(app) {
       btn.classList.add('active');
     });
     modeWrap.appendChild(btn);
+  });
+
+  const countWrap = document.getElementById('start-counts');
+  [10, 20].forEach(n => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (state.count === n ? ' active' : '');
+    btn.textContent = `${n}問`;
+    btn.addEventListener('click', () => {
+      state.count = n;
+      countWrap.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    countWrap.appendChild(btn);
   });
 
   const filterWrap = document.getElementById('start-filters');
@@ -192,7 +210,7 @@ function renderStart(app) {
 }
 
 function startNew() {
-  state.questions   = getFilteredIds(state.category);
+  state.questions   = getFilteredIds(state.category).slice(0, state.count);
   state.current     = 0;
   state.answers     = {};
   state.shownOptions = {};
@@ -363,7 +381,7 @@ function renderResult(app) {
 
   document.getElementById('btn-back-start').addEventListener('click', () => {
     clearState();
-    state = { category: 'すべて', mode: state.mode, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start' };
+    state = { category: 'すべて', mode: state.mode, count: state.count, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start' };
     render();
   });
 
