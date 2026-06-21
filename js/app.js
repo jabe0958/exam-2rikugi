@@ -3,10 +3,12 @@
 const STORAGE_KEY = 'rikugi2_state';
 const HISTORY_KEY  = 'rikugi2_history';
 const CATEGORIES   = ['すべて', '法規', '無線工学の基礎', '無線工学A', '無線工学B'];
+const QTYPES       = ['すべて', '計算問題', '文章問題'];
 
 let allQuestions = [];
 let state = {
   category: 'すべて',
+  questionType: 'すべて', // 'すべて' | '計算問題' | '文章問題'
   mode: '4択',        // '2択' | '4択'
   count: 10,          // 10 | 20
   questions: [],      // filtered & shuffled ids
@@ -61,8 +63,10 @@ function shuffle(arr) {
   return a;
 }
 
-function getFilteredIds(category) {
-  const qs = category === 'すべて' ? allQuestions : allQuestions.filter(q => q.category === category);
+function getFilteredIds(category, questionType) {
+  let qs = category === 'すべて' ? allQuestions : allQuestions.filter(q => q.category === category);
+  if (questionType === '計算問題') qs = qs.filter(q => q.type === 'calc');
+  else if (questionType === '文章問題') qs = qs.filter(q => q.type === 'text');
   return shuffle(qs.map(q => q.id));
 }
 
@@ -126,7 +130,7 @@ function renderStart(app) {
       ${hasSaved ? `
         <div class="resume-card">
           <h3>前回の続きから再開できます</h3>
-          <p>${saved.mode || '4択'} ・ ${saved.count || 10}問 ・ ${saved.category} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
+          <p>${saved.mode || '4択'} ・ ${saved.count || 10}問 ・ ${saved.category}${saved.questionType && saved.questionType !== 'すべて' ? ' ・ ' + saved.questionType : ''} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
           <div class="btn-row">
             <button class="btn btn-primary" id="btn-resume">続きから</button>
             <button class="btn btn-secondary" id="btn-new">最初から</button>
@@ -140,6 +144,10 @@ function renderStart(app) {
       <div>
         <p style="margin-bottom:10px;font-weight:600;font-size:14px;">問題数を選ぶ</p>
         <div class="filter-wrap" id="start-counts"></div>
+      </div>
+      <div>
+        <p style="margin-bottom:10px;font-weight:600;font-size:14px;">問題の種別を選ぶ</p>
+        <div class="filter-wrap" id="start-qtypes"></div>
       </div>
       <div>
         <p style="margin-bottom:10px;font-weight:600;font-size:14px;">カテゴリを選んでスタート</p>
@@ -188,6 +196,19 @@ function renderStart(app) {
     countWrap.appendChild(btn);
   });
 
+  const qtypeWrap = document.getElementById('start-qtypes');
+  QTYPES.forEach(qt => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (state.questionType === qt ? ' active' : '');
+    btn.textContent = qt;
+    btn.addEventListener('click', () => {
+      state.questionType = qt;
+      qtypeWrap.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    qtypeWrap.appendChild(btn);
+  });
+
   const filterWrap = document.getElementById('start-filters');
   CATEGORIES.forEach(cat => {
     const btn = document.createElement('button');
@@ -218,7 +239,7 @@ function renderStart(app) {
 }
 
 function startNew() {
-  state.questions   = getFilteredIds(state.category).slice(0, state.count);
+  state.questions   = getFilteredIds(state.category, state.questionType).slice(0, state.count);
   state.current     = 0;
   state.answers     = {};
   state.shownOptions = {};
@@ -255,6 +276,7 @@ function renderQuiz(app) {
       <h1>二陸技 一問一答</h1>
       <div class="header-right">
         <span style="font-size:12px;font-weight:700;color:var(--primary);background:#eff6ff;padding:3px 8px;border-radius:999px">${state.mode}</span>
+        ${state.questionType !== 'すべて' ? `<span style="font-size:11px;font-weight:700;color:#059669;background:#ecfdf5;padding:3px 8px;border-radius:999px">${state.questionType}</span>` : ''}
         <span style="font-size:13px;color:var(--text-muted)">${answeredCount()}/${total}</span>
         <button class="btn btn-secondary" id="btn-finish" style="width:auto;padding:6px 14px;font-size:13px">終了</button>
       </div>
@@ -389,7 +411,7 @@ function renderResult(app) {
 
   document.getElementById('btn-back-start').addEventListener('click', () => {
     clearState();
-    state = { category: 'すべて', mode: state.mode, count: state.count, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start' };
+    state = { category: 'すべて', questionType: 'すべて', mode: state.mode, count: state.count, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start' };
     render();
   });
 
