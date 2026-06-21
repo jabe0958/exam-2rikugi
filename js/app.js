@@ -351,6 +351,7 @@ function renderQuiz(app) {
       }
       saveState();
       render();
+      window.scrollTo({ top: 0, behavior: 'instant' });
     });
   }
 
