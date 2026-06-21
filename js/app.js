@@ -9,13 +9,16 @@ let allQuestions = [];
 let state = {
   category: 'すべて',
   questionType: 'すべて', // 'すべて' | '計算問題' | '文章問題'
-  mode: '4択',        // '2択' | '4択'
+  mode: '4択',        // '2択' | '4択' | '暗記'
   count: 10,          // 10 | 20
   questions: [],      // filtered & shuffled ids
   current: 0,
   answers: {},        // { questionId: { selected, correct } }
   shownOptions: {},   // { questionId: number[] } — 2択時に表示する元のoption index
-  screen: 'start',    // 'start' | 'quiz' | 'result' | 'stats'
+  screen: 'start',    // 'start' | 'quiz' | 'result' | 'stats' | 'flashcard'
+  fcQueue: [],        // 暗記モード: 残りのID（もう一度は末尾に再追加）
+  fcDone: [],         // 暗記モード: 覚えたID
+  fcRevealed: false,  // 暗記モード: 現在のカードが開かれているか
 };
 
 // ── Session state persistence ─────────────────────────────
@@ -109,15 +112,19 @@ function renderMath(el) {
 // ── Render ───────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app');
-  if      (state.screen === 'start')  renderStart(app);
-  else if (state.screen === 'quiz')   renderQuiz(app);
-  else if (state.screen === 'result') renderResult(app);
-  else if (state.screen === 'stats')  renderStats(app);
+  if      (state.screen === 'start')     renderStart(app);
+  else if (state.screen === 'quiz')      renderQuiz(app);
+  else if (state.screen === 'result')    renderResult(app);
+  else if (state.screen === 'stats')     renderStats(app);
+  else if (state.screen === 'flashcard') renderFlashcard(app);
 }
 
 function renderStart(app) {
   const saved = loadState();
-  const hasSaved = saved && saved.screen === 'quiz' && saved.questions && saved.questions.length > 0;
+  const hasSaved = saved && (
+    (saved.screen === 'quiz' && saved.questions && saved.questions.length > 0) ||
+    (saved.screen === 'flashcard' && saved.fcQueue && saved.fcQueue.length > 0)
+  );
 
   app.innerHTML = `
     <div class="header">
@@ -130,7 +137,7 @@ function renderStart(app) {
       ${hasSaved ? `
         <div class="resume-card">
           <h3>前回の続きから再開できます</h3>
-          <p>${saved.mode || '4択'} ・ ${saved.count || 10}問 ・ ${saved.category}${saved.questionType && saved.questionType !== 'すべて' ? ' ・ ' + saved.questionType : ''} ・ ${Object.keys(saved.answers).length}/${saved.questions.length}問 回答済み</p>
+          <p>${saved.mode || '4択'} ・ ${saved.count || 10}問 ・ ${saved.category}${saved.questionType && saved.questionType !== 'すべて' ? ' ・ ' + saved.questionType : ''} ・ ${saved.screen === 'flashcard' ? `${(saved.fcDone||[]).length}/${((saved.fcQueue||[]).length+(saved.fcDone||[]).length)}枚完了` : `${Object.keys(saved.answers||{}).length}/${(saved.questions||[]).length}問 回答済み`}</p>
           <div class="btn-row">
             <button class="btn btn-primary" id="btn-resume">続きから</button>
             <button class="btn btn-secondary" id="btn-new">最初から</button>
@@ -163,7 +170,7 @@ function renderStart(app) {
   });
 
   const modeWrap = document.getElementById('start-modes');
-  ['2択', '4択'].forEach(m => {
+  ['2択', '4択', '暗記'].forEach(m => {
     const btn = document.createElement('button');
     btn.className = 'filter-btn' + (state.mode === m ? ' active' : '');
     btn.textContent = m;
@@ -239,11 +246,19 @@ function renderStart(app) {
 }
 
 function startNew() {
-  state.questions   = getFilteredIds(state.category, state.questionType).slice(0, state.count);
-  state.current     = 0;
-  state.answers     = {};
-  state.shownOptions = {};
-  state.screen      = 'quiz';
+  const ids = getFilteredIds(state.category, state.questionType).slice(0, state.count);
+  if (state.mode === '暗記') {
+    state.fcQueue    = ids;
+    state.fcDone     = [];
+    state.fcRevealed = false;
+    state.screen     = 'flashcard';
+  } else {
+    state.questions   = ids;
+    state.current     = 0;
+    state.answers     = {};
+    state.shownOptions = {};
+    state.screen      = 'quiz';
+  }
   saveState();
   render();
 }
@@ -409,7 +424,7 @@ function renderResult(app) {
 
   document.getElementById('btn-back-start').addEventListener('click', () => {
     clearState();
-    state = { category: 'すべて', questionType: 'すべて', mode: state.mode, count: state.count, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start' };
+    state = { category: 'すべて', questionType: 'すべて', mode: state.mode, count: state.count, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start', fcQueue: [], fcDone: [], fcRevealed: false };
     render();
   });
 
@@ -423,6 +438,99 @@ function renderResult(app) {
     saveState();
     render();
   });
+
+  renderMath(app);
+}
+
+// ── Flashcard screen ─────────────────────────────────────
+function renderFlashcard(app) {
+  const total = state.fcQueue.length + state.fcDone.length;
+  const doneCount = state.fcDone.length;
+
+  if (state.fcQueue.length === 0) {
+    app.innerHTML = `
+      <div class="header"><h1>二陸技 一問一答</h1></div>
+      <div class="card result-screen">
+        <div class="score-circle">
+          <span class="score-num">${total}</span>
+          <span class="score-label">枚完了</span>
+        </div>
+        <p style="color:var(--success);font-weight:700;margin-bottom:20px">全部覚えました！</p>
+        <button class="btn btn-secondary" id="btn-fc-back">最初に戻る</button>
+      </div>
+    `;
+    document.getElementById('btn-fc-back').addEventListener('click', () => {
+      clearState();
+      state = { category: 'すべて', questionType: 'すべて', mode: '暗記', count: state.count, questions: [], current: 0, answers: {}, shownOptions: {}, screen: 'start', fcQueue: [], fcDone: [], fcRevealed: false };
+      render();
+    });
+    return;
+  }
+
+  const q = allQuestions.find(q => q.id === state.fcQueue[0]);
+  const pct = Math.round((doneCount / total) * 100);
+
+  app.innerHTML = `
+    <div class="header">
+      <h1>二陸技 一問一答</h1>
+      <div class="header-right">
+        <span style="font-size:12px;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:3px 8px;border-radius:999px">暗記</span>
+        <span style="font-size:13px;color:var(--text-muted)">${doneCount}/${total}</span>
+        <button class="btn btn-secondary" id="btn-fc-finish" style="width:auto;padding:6px 14px;font-size:13px">終了</button>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label"><span>覚えた ${doneCount} / ${total}枚</span><span>${pct}%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+    </div>
+    <div class="card">
+      <span class="badge ${q.category}">${q.category}</span>
+      <p class="question-text">${q.question}</p>
+      ${state.fcRevealed ? `
+        <div style="margin:16px 0 8px;padding:12px 14px;background:#f0fdf4;border-left:4px solid var(--success);border-radius:6px">
+          <div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:4px">正解</div>
+          <div>${q.options[q.answer]}</div>
+        </div>
+        <div class="explanation show"><strong>解説</strong>${q.explanation}</div>
+        <div class="btn-row" style="margin-top:16px">
+          <button class="btn btn-secondary" id="btn-fc-again">もう一度</button>
+          <button class="btn btn-primary" id="btn-fc-ok">覚えた ✓</button>
+        </div>
+      ` : `
+        <button class="btn btn-primary" id="btn-fc-reveal" style="margin-top:8px">答えを見る</button>
+      `}
+    </div>
+  `;
+
+  document.getElementById('btn-fc-finish').addEventListener('click', () => {
+    clearState();
+    state.screen = 'start';
+    render();
+  });
+
+  if (state.fcRevealed) {
+    document.getElementById('btn-fc-again').addEventListener('click', () => {
+      const id = state.fcQueue.shift();
+      state.fcQueue.push(id);
+      state.fcRevealed = false;
+      saveState();
+      render();
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    });
+    document.getElementById('btn-fc-ok').addEventListener('click', () => {
+      state.fcDone.push(state.fcQueue.shift());
+      state.fcRevealed = false;
+      saveState();
+      render();
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    });
+  } else {
+    document.getElementById('btn-fc-reveal').addEventListener('click', () => {
+      state.fcRevealed = true;
+      saveState();
+      render();
+    });
+  }
 
   renderMath(app);
 }
