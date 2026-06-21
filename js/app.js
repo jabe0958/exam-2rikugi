@@ -313,6 +313,7 @@ function renderQuiz(app) {
         ${questionHistoryHTML(q.id)}
       </div>
       <p class="question-text">${q.question}</p>
+      ${q.image ? `<img src="${q.image}" alt="問題図" class="question-img">` : ''}
       <div class="options" id="options"></div>
       ${answered ? `
         <div class="result-badge ${answered.correct ? 'ok' : 'ng'}">
@@ -486,6 +487,7 @@ function renderFlashcard(app) {
     <div class="card">
       <span class="badge ${q.category}">${q.category}</span>
       <p class="question-text">${q.question}</p>
+      ${q.image ? `<img src="${q.image}" alt="問題図" class="question-img">` : ''}
       ${state.fcRevealed ? `
         <div style="margin:16px 0 8px;padding:12px 14px;background:#f0fdf4;border-left:4px solid var(--success);border-radius:6px">
           <div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:4px">正解</div>

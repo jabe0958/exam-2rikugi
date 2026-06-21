@@ -1,4 +1,4 @@
-const CACHE = 'rikugi2-v15';
+const CACHE = 'rikugi2-v16';
 const ASSETS = [
   '/',
   '/index.html',
@@ -38,8 +38,16 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-  // ローカルアセット: キャッシュ優先
+  // ローカルアセット: キャッシュ優先（img/は取得後にキャッシュ追加）
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    caches.match(e.request).then(cached => {
+      if (cached) return cached;
+      return fetch(e.request).then(res => {
+        if (res.ok && e.request.url.includes('/img/')) {
+          caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+        }
+        return res;
+      });
+    })
   );
 });
