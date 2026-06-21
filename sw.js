@@ -1,10 +1,11 @@
-const CACHE = 'rikugi2-v17';
+const CACHE = 'rikugi2-v18';
 const ASSETS = [
   '/',
   '/index.html',
   '/css/style.css',
   '/js/app.js',
   '/data/questions.json',
+  '/data/cards.json',
   '/manifest.json',
   '/icon.svg',
 ];

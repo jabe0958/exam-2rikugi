@@ -6,6 +6,7 @@ const CATEGORIES   = ['すべて', '法規', '無線工学の基礎', '無線工
 const QTYPES       = ['すべて', '計算問題', '文章問題'];
 
 let allQuestions = [];
+let allCards = [];
 let state = {
   category: 'すべて',
   questionType: 'すべて', // 'すべて' | '計算問題' | '文章問題'
@@ -246,13 +247,16 @@ function renderStart(app) {
 }
 
 function startNew() {
-  const ids = getFilteredIds(state.category, state.questionType).slice(0, state.count);
   if (state.mode === '暗記') {
-    state.fcQueue    = ids;
+    const cards = state.category === 'すべて'
+      ? allCards
+      : allCards.filter(c => c.category === state.category);
+    state.fcQueue    = shuffle(cards.map(c => c.id)).slice(0, state.count);
     state.fcDone     = [];
     state.fcRevealed = false;
     state.screen     = 'flashcard';
   } else {
+    const ids = getFilteredIds(state.category, state.questionType).slice(0, state.count);
     state.questions   = ids;
     state.current     = 0;
     state.answers     = {};
@@ -468,8 +472,11 @@ function renderFlashcard(app) {
     return;
   }
 
-  const q = allQuestions.find(q => q.id === state.fcQueue[0]);
+  const card = allCards.find(c => c.id === state.fcQueue[0]);
   const pct = Math.round((doneCount / total) * 100);
+
+  // 裏面テキストを改行→<br>に変換
+  const backHtml = card.back.replace(/\n/g, '<br>');
 
   app.innerHTML = `
     <div class="header">
@@ -485,15 +492,12 @@ function renderFlashcard(app) {
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
     </div>
     <div class="card">
-      <span class="badge ${q.category}">${q.category}</span>
-      <p class="question-text">${q.question}</p>
-      ${q.image ? `<img src="${q.image}" alt="問題図" class="question-img">` : ''}
+      <span class="badge ${card.category}">${card.category}</span>
+      <p class="question-text" style="white-space:pre-wrap">${card.front}</p>
       ${state.fcRevealed ? `
-        <div style="margin:16px 0 8px;padding:12px 14px;background:#f0fdf4;border-left:4px solid var(--success);border-radius:6px">
-          <div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:4px">正解</div>
-          <div>${q.options[q.answer]}</div>
+        <div style="margin:16px 0 8px;padding:14px 16px;background:#f0fdf4;border-left:4px solid var(--success);border-radius:6px;font-size:16px;line-height:1.8">
+          ${backHtml}
         </div>
-        <div class="explanation show"><strong>解説</strong>${q.explanation}</div>
         <div class="btn-row" style="margin-top:16px">
           <button class="btn btn-secondary" id="btn-fc-again">もう一度</button>
           <button class="btn btn-primary" id="btn-fc-ok">覚えた ✓</button>
@@ -650,8 +654,12 @@ document.addEventListener('visibilitychange', () => {
 
 // ── Boot ─────────────────────────────────────────────────
 async function init() {
-  const res = await fetch('data/questions.json');
-  allQuestions = await res.json();
+  const [qRes, cRes] = await Promise.all([
+    fetch('data/questions.json'),
+    fetch('data/cards.json'),
+  ]);
+  allQuestions = await qRes.json();
+  allCards     = await cRes.json();
 
   const saved = loadState();
   if (saved) {
