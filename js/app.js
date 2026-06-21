@@ -303,15 +303,12 @@ function renderQuiz(app) {
         <div class="result-badge ${answered.correct ? 'ok' : 'ng'}">
           ${answered.correct ? '✓ 正解！' : `✗ 不正解（正解：${correctLabel}）`}
         </div>
+        <button class="btn btn-primary" id="btn-next" style="margin:12px 0">
+          ${state.current + 1 < total ? '次の問題 →' : '結果を見る'}
+        </button>
         <div class="explanation show"><strong>解説</strong>${q.explanation}</div>
       ` : ''}
     </div>
-
-    ${answered ? `
-      <button class="btn btn-primary" id="btn-next">
-        ${state.current + 1 < total ? '次の問題 →' : '結果を見る'}
-      </button>
-    ` : ''}
   `;
 
   const dots = document.getElementById('nav-dots');
